@@ -11,6 +11,7 @@ import {
   BarChart,
   Bar
 } from "recharts";
+
 import {
   CompetitorInputs,
   CostInputs,
@@ -20,10 +21,16 @@ import {
   Scenario,
   ScenarioResult
 } from "./types";
-import { buildScenarioResult } from "./calculations";
 
+import { buildScenarioResult } from "./calculations";
+import { exportToCSV, exportToXLSX, exportToPDF } from "./exports";
+
+// YEARS CONSTANT
 const YEARS = 5;
 
+/* ---------------------------
+   DEFAULT MODEL VALUES
+---------------------------- */
 const defaultGeneral: GeneralInputs = {
   productName: "New Product",
   productType: "software",
@@ -66,7 +73,9 @@ const defaultCompetitor: CompetitorInputs = {
   competitorPrice: 109
 };
 
-// Helpers
+/* ---------------------------
+   SMALL HELPERS
+---------------------------- */
 const fmtCurrency = (value: number, currency: string) =>
   `${currency} ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
@@ -75,6 +84,9 @@ const fmtCurrencyShort = (value: number, currency: string) =>
 
 const fmtPct = (value: number) => `${value.toFixed(1)}%`;
 
+/* ---------------------------
+   MAIN APP
+---------------------------- */
 const App: React.FC = () => {
   const [general, setGeneral] = useState<GeneralInputs>(defaultGeneral);
   const [cost, setCost] = useState<CostInputs>(defaultCost);
@@ -82,12 +94,14 @@ const App: React.FC = () => {
   const [revenue, setRevenue] = useState<RevenueInputs>(defaultRevenue);
   const [scenarios] = useState<Scenario[]>(defaultScenarios);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string>("base");
-  const [competitor, setCompetitor] =
-    useState<CompetitorInputs>(defaultCompetitor);
+  const [competitor, setCompetitor] = useState<CompetitorInputs>(defaultCompetitor);
 
   const selectedScenario =
     scenarios.find((s) => s.id === selectedScenarioId) ?? scenarios[1];
 
+  /* ---------------------------
+     BUILD ALL SCENARIO RESULTS
+  ---------------------------- */
   const scenarioResults: ScenarioResult[] = useMemo(
     () =>
       scenarios.map((s) =>
@@ -100,29 +114,27 @@ const App: React.FC = () => {
     (r) => r.scenario.id === selectedScenario.id
   )!;
 
-  // Sensitivity analysis: Base scenario vs +/-10% price
+  /* ---------------------------
+     SENSITIVITY ANALYSIS
+  ---------------------------- */
   const sensitivityData = useMemo(() => {
     const delta = 0.1;
 
-    const computeTotalNetProfitWithPriceMultiplier = (multiplier: number) => {
-      const fakeScenario: Scenario = {
-        id: "tmp",
+    const computeNet = (multiplier: number) => {
+      const testScenario: Scenario = {
+        id: "temp",
         name: "tmp",
         adoptionMultiplier: selectedScenario.adoptionMultiplier,
         priceMultiplier: selectedScenario.priceMultiplier * multiplier
       };
-      const r = buildScenarioResult(general, cost, market, revenue, fakeScenario);
-      return r.totalNetProfit;
+      return buildScenarioResult(general, cost, market, revenue, testScenario)
+        .totalNetProfit;
     };
 
-    const baseNet = currentResult.totalNetProfit;
-    const minus10 = computeTotalNetProfitWithPriceMultiplier(1 - delta);
-    const plus10 = computeTotalNetProfitWithPriceMultiplier(1 + delta);
-
     return [
-      { label: "-10% price", net: minus10 },
-      { label: "Base price", net: baseNet },
-      { label: "+10% price", net: plus10 }
+      { label: "-10% price", net: computeNet(1 - delta) },
+      { label: "Base price", net: currentResult.totalNetProfit },
+      { label: "+10% price", net: computeNet(1 + delta) }
     ];
   }, [currentResult.totalNetProfit, general, cost, market, revenue, selectedScenario]);
 
@@ -133,8 +145,12 @@ const App: React.FC = () => {
         100
       : null;
 
+  /* ---------------------------
+     RENDER UI
+  ---------------------------- */
   return (
     <div className="min-h-screen px-4 py-6 md:px-8">
+      {/* HEADER */}
       <header className="mb-6 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">
@@ -145,16 +161,14 @@ const App: React.FC = () => {
             market sizing, break-even and sensitivity analysis.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-800">
-            Seamless Travel Solutions
-          </span>
-        </div>
       </header>
 
+      {/* MAIN GRID */}
       <main className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1.75fr)]">
-        {/* LEFT: Inputs */}
+        {/* LEFT COLUMN – INPUT FORMS */}
         <section className="flex flex-col gap-4">
+
+          {/* General */}
           <Card title="General">
             <div className="grid grid-cols-2 gap-3">
               <TextInput
@@ -183,13 +197,12 @@ const App: React.FC = () => {
                 value={general.years}
                 min={1}
                 max={10}
-                onChange={(v) =>
-                  setGeneral({ ...general, years: v || YEARS })
-                }
+                onChange={(v) => setGeneral({ ...general, years: v || YEARS })}
               />
             </div>
           </Card>
 
+          {/* Costs */}
           <Card title="Costs">
             <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
               Upfront / Capex
@@ -205,32 +218,27 @@ const App: React.FC = () => {
                 label="Launch & certification capex"
                 currency={general.currency}
                 value={cost.launchMarketingCapex}
-                onChange={(v) =>
-                  setCost({ ...cost, launchMarketingCapex: v })
-                }
+                onChange={(v) => setCost({ ...cost, launchMarketingCapex: v })}
               />
             </div>
 
             <h4 className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Variable costs (per unit/user)
+              Variable cost per unit/user
             </h4>
+
             {general.productType === "software" ? (
               <div className="grid grid-cols-2 gap-3">
                 <CurrencyInput
                   label="Infra cost per user"
                   currency={general.currency}
                   value={cost.infraCostPerUser}
-                  onChange={(v) =>
-                    setCost({ ...cost, infraCostPerUser: v })
-                  }
+                  onChange={(v) => setCost({ ...cost, infraCostPerUser: v })}
                 />
                 <CurrencyInput
                   label="3rd party licenses per user"
                   currency={general.currency}
                   value={cost.licenseCostPerUser}
-                  onChange={(v) =>
-                    setCost({ ...cost, licenseCostPerUser: v })
-                  }
+                  onChange={(v) => setCost({ ...cost, licenseCostPerUser: v })}
                 />
               </div>
             ) : (
@@ -247,9 +255,7 @@ const App: React.FC = () => {
                   label="Shipping per unit"
                   currency={general.currency}
                   value={cost.shippingCostPerUnit}
-                  onChange={(v) =>
-                    setCost({ ...cost, shippingCostPerUnit: v })
-                  }
+                  onChange={(v) => setCost({ ...cost, shippingCostPerUnit: v })}
                 />
                 <CurrencyInput
                   label="Packaging per unit"
@@ -261,9 +267,10 @@ const App: React.FC = () => {
                 />
               </div>
             )}
+
             <div className="mt-3 grid grid-cols-2 gap-3">
               <CurrencyInput
-                label="Support cost per unit/user"
+                label="Support per unit/user"
                 currency={general.currency}
                 value={cost.supportCostPerUnit}
                 onChange={(v) =>
@@ -274,15 +281,14 @@ const App: React.FC = () => {
                 label="Annual fixed opex"
                 currency={general.currency}
                 value={cost.annualFixedOpex}
-                onChange={(v) =>
-                  setCost({ ...cost, annualFixedOpex: v })
-                }
+                onChange={(v) => setCost({ ...cost, annualFixedOpex: v })}
               />
             </div>
           </Card>
 
+          {/* Market Sizing */}
           <Card title="Market sizing (TAM/SAM/SOM)">
-            <div className="grid grid-cols-1 gap-3">
+            <div className="grid gap-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">
                   TAM (units per year)
@@ -303,18 +309,21 @@ const App: React.FC = () => {
                   ))}
                 </div>
               </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <NumberInput
                   label="SAM (% of TAM)"
                   value={market.samPct}
                   onChange={(v) => setMarket({ ...market, samPct: v })}
                 />
+
                 <NumberInput
                   label="SOM (% of SAM)"
                   value={market.somPct}
                   onChange={(v) => setMarket({ ...market, somPct: v })}
                 />
               </div>
+
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">
                   Adoption (% of SOM captured per year)
@@ -323,16 +332,12 @@ const App: React.FC = () => {
                   {Array.from({ length: general.years }).map((_, i) => (
                     <NumberInput
                       key={i}
-                      label={`Y${i + 1}`}
                       hideLabel
                       value={market.adoptionPctPerYear[i] ?? 0}
                       onChange={(v) => {
                         const arr = [...market.adoptionPctPerYear];
                         arr[i] = v;
-                        setMarket({
-                          ...market,
-                          adoptionPctPerYear: arr
-                        });
+                        setMarket({ ...market, adoptionPctPerYear: arr });
                       }}
                     />
                   ))}
@@ -341,6 +346,7 @@ const App: React.FC = () => {
             </div>
           </Card>
 
+          {/* Pricing & competitor */}
           <Card title="Pricing & competitor">
             <div className="grid grid-cols-2 gap-3">
               <CurrencyInput
@@ -359,6 +365,7 @@ const App: React.FC = () => {
                 }
               />
             </div>
+
             <div className="mt-3 grid grid-cols-2 gap-3">
               <TextInput
                 label="Competitor name"
@@ -376,14 +383,15 @@ const App: React.FC = () => {
                 }
               />
             </div>
+
             {competitorDelta !== null && (
               <p className="mt-2 text-xs text-slate-600">
-                Your Year 1 price is{" "}
+                Your price is{" "}
                 <span
                   className={
                     competitorDelta > 0
-                      ? "font-semibold text-emerald-700"
-                      : "font-semibold text-rose-700"
+                      ? "text-emerald-700 font-semibold"
+                      : "text-rose-700 font-semibold"
                   }
                 >
                   {competitorDelta >= 0 ? "+" : ""}
@@ -395,8 +403,10 @@ const App: React.FC = () => {
           </Card>
         </section>
 
-        {/* RIGHT: Results & charts */}
+        {/* RIGHT COLUMN – RESULTS & CHARTS */}
         <section className="flex flex-col gap-4">
+
+          {/* Scenario Summary */}
           <Card title="Scenario summary">
             <div className="mb-3 flex flex-wrap gap-2">
               {scenarios.map((s) => (
@@ -442,6 +452,7 @@ const App: React.FC = () => {
             </div>
           </Card>
 
+          {/* Revenue + Net Profit */}
           <Card title="Revenue & net profit over time">
             <ChartWrapper>
               <ResponsiveContainer width="100%" height="100%">
@@ -466,7 +477,7 @@ const App: React.FC = () => {
                     type="monotone"
                     dataKey="revenue"
                     name="Revenue"
-                    stroke="#3b82f6"
+                    stroke="#2563eb"
                     strokeWidth={2}
                     dot={false}
                   />
@@ -483,8 +494,11 @@ const App: React.FC = () => {
             </ChartWrapper>
           </Card>
 
+          {/* Units + Margins */}
           <Card title="Units & margin evolution">
             <div className="grid gap-3 md:grid-cols-2">
+
+              {/* Units */}
               <ChartWrapper>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
@@ -496,7 +510,7 @@ const App: React.FC = () => {
                   >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="year" />
-                    <YAxis tickFormatter={(v) => v.toLocaleString()} />
+                    <YAxis tickFormatter={(v) => `${v.toLocaleString()}`} />
                     <Tooltip
                       formatter={(value) =>
                         (value as number).toLocaleString()
@@ -515,6 +529,7 @@ const App: React.FC = () => {
                 </ResponsiveContainer>
               </ChartWrapper>
 
+              {/* Margins */}
               <ChartWrapper>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
@@ -549,19 +564,21 @@ const App: React.FC = () => {
                   </LineChart>
                 </ResponsiveContainer>
               </ChartWrapper>
+
             </div>
           </Card>
 
+          {/* Scenario Comparison */}
           <Card title="Scenario comparison — revenue (5y)">
             <ChartWrapper>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
                   data={Array.from({ length: general.years }).map((_, i) => {
-                    const obj: any = { year: `Y${i + 1}` };
+                    const row: any = { year: `Y${i + 1}` };
                     scenarioResults.forEach((r) => {
-                      obj[r.scenario.name] = r.yearly[i]?.revenue ?? 0;
+                      row[r.scenario.name] = r.yearly[i]?.revenue ?? 0;
                     });
-                    return obj;
+                    return row;
                   })}
                   margin={{ left: -20, right: 10 }}
                 >
@@ -574,7 +591,7 @@ const App: React.FC = () => {
                     }
                   />
                   <Legend />
-                  {scenarioResults.map((r, idx) => {
+                  {scenarioResults.map((r, index) => {
                     const colors = ["#6b7280", "#2563eb", "#16a34a"];
                     return (
                       <Line
@@ -582,7 +599,7 @@ const App: React.FC = () => {
                         type="monotone"
                         dataKey={r.scenario.name}
                         name={r.scenario.name}
-                        stroke={colors[idx] ?? "#6b7280"}
+                        stroke={colors[index] ?? "#6b7280"}
                         strokeWidth={2}
                         dot={false}
                       />
@@ -593,10 +610,10 @@ const App: React.FC = () => {
             </ChartWrapper>
           </Card>
 
-          <Card title="Sensitivity analysis — price vs total net profit (5y)">
+          {/* Sensitivity Analysis */}
+          <Card title="Sensitivity analysis — price vs net profit (5y)">
             <p className="mb-2 text-xs text-slate-600">
-              Impact on 5-year net profit when changing price by ±10% in the current scenario
-              (holding all other assumptions constant).
+              Impact on 5-year net profit when price changes by ±10% in the current scenario.
             </p>
             <ChartWrapper>
               <ResponsiveContainer width="100%" height="100%">
@@ -614,13 +631,48 @@ const App: React.FC = () => {
               </ResponsiveContainer>
             </ChartWrapper>
           </Card>
+
         </section>
       </main>
+
+      {/* ---------------------------
+          EXPORT BUTTON BAR
+      ---------------------------- */}
+      <div className="mt-5 flex justify-end">
+        <div className="flex gap-2 rounded-full bg-white px-4 py-2 text-xs shadow-md ring-1 ring-slate-200">
+          <span className="self-center text-[11px] text-slate-500">
+            Export:
+          </span>
+
+          <button
+            className="rounded-full border border-slate-300 px-3 py-1 hover:border-blue-400"
+            onClick={() => exportToCSV(currentResult, general.currency)}
+          >
+            CSV
+          </button>
+
+          <button
+            className="rounded-full border border-slate-300 px-3 py-1 hover:border-blue-400"
+            onClick={() => exportToXLSX(currentResult, general.currency)}
+          >
+            XLSX
+          </button>
+
+          <button
+            className="rounded-full border border-slate-300 px-3 py-1 hover:border-blue-400"
+            onClick={() => exportToPDF(currentResult, general.currency)}
+          >
+            PDF
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
 
-/* ---- Small UI components (Tailwind based) ---- */
+/* ============================================================================
+   REUSABLE SMALL UI COMPONENTS
+============================================================================ */
 
 const Card: React.FC<{ title: string; children: React.ReactNode }> = ({
   title,
@@ -644,15 +696,13 @@ const SummaryTile: React.FC<{ label: string; value: string }> = ({
   </div>
 );
 
-const ChartWrapper: React.FC<{ children: React.ReactNode }> = ({
-  children
-}) => (
+const ChartWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="h-56 w-full rounded-xl bg-slate-50 p-2">
     {children}
   </div>
 );
 
-// Generic inputs
+/* INPUT COMPONENTS */
 
 interface BaseInputProps {
   label: string;
