@@ -147,7 +147,7 @@ const App: React.FC = () => {
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-500">
           <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-800">
-            Ready for GitHub + Vercel
+            Seamless Travel Solutions
           </span>
         </div>
       </header>
